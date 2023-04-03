@@ -24,7 +24,7 @@ from deep_sort.detection import Detection
 from deep_sort.tracker import Tracker
 from tools import generate_detections as gdet
 flags.DEFINE_string('framework', 'tf', '(tf, tflite, trt')
-flags.DEFINE_string('weights', './checkpoints/yolov4-416',
+flags.DEFINE_string('weights', './checkpoints/yolov4-tiny-416',
                     'path to weights file')
 flags.DEFINE_integer('size', 416, 'resize images to')
 flags.DEFINE_boolean('tiny', False, 'yolo or yolo-tiny')
@@ -38,7 +38,17 @@ flags.DEFINE_boolean('dont_show', False, 'dont show video output')
 flags.DEFINE_boolean('info', False, 'show detailed info of tracked objects')
 flags.DEFINE_boolean('count', False, 'count objects being tracked on screen')
 
+mouseX, mouseY = -1,-1
+def get_mouse_pos(event, x, y, flags, param):
+    global mouseX, mouseY
+    # Imprimimos la información sobre los eventos que se estén realizando
+    if event == cv2.EVENT_LBUTTONDBLCLK:
+        mouseX = x
+        mouseY = y
+
+
 def main(_argv):
+    tracked_object = None
     # Definition of the parameters
     max_cosine_distance = 0.4
     nn_budget = None
@@ -75,7 +85,7 @@ def main(_argv):
 
     # begin video capture
     try:
-        vid = cv2.VideoCapture(int(video_path))
+        vid = cv2.VideoCapture(int(video_path),cv2.CAP_DSHOW)
     except:
         vid = cv2.VideoCapture(video_path)
 
@@ -88,7 +98,7 @@ def main(_argv):
         height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = int(vid.get(cv2.CAP_PROP_FPS))
         codec = cv2.VideoWriter_fourcc(*FLAGS.output_format)
-        out = cv2.VideoWriter(FLAGS.output, codec, fps, (width, height))
+        out = cv2.VideoWriter(FLAGS.output, codec, 30, (width, height))
 
     frame_num = 0
     # while video is running
@@ -101,7 +111,7 @@ def main(_argv):
             print('Video has ended or failed, try a different video format!')
             break
         frame_num +=1
-        print('Frame #: ', frame_num)
+        #print('Frame #: ', frame_num)
         frame_size = frame.shape[:2]
         image_data = cv2.resize(frame, (input_size, input_size))
         image_data = image_data / 255.
@@ -157,10 +167,10 @@ def main(_argv):
         class_names = utils.read_class_names(cfg.YOLO.CLASSES)
 
         # by default allow all classes in .names file
-        allowed_classes = list(class_names.values())
+        #allowed_classes = list(class_names.values())
         
         # custom allowed classes (uncomment line below to customize tracker for only people)
-        #allowed_classes = ['person']
+        allowed_classes = ['person','scissors']
 
         # loop through objects and use class index to get class name, allow only classes in allowed_classes list
         names = []
@@ -218,15 +228,37 @@ def main(_argv):
             if FLAGS.info:
                 print("Tracker ID: {}, Class: {},  BBox Coords (xmin, ymin, xmax, ymax): {}".format(str(track.track_id), class_name, (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))))
 
+            if mouseX is not None:
+                if mouseX > int(bbox[0]) and mouseX < int(bbox[2]) and mouseY > int(bbox[1]) and mouseY < int(bbox[3]):
+                    tracked_object = track.track_id
+
+            if tracked_object is not None:
+                if tracked_object == track.track_id:
+                    #Control
+                    centro_w = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))/2
+                    centro_h = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))/2
+
+                    centroide_w = int(bbox[0])+(int(bbox[2]) - int(bbox[0]))/2
+                    centroide_h = int(bbox[1])+(int(bbox[3]) - int(bbox[1]))/2
+
+                    error_w = (centroide_w - centro_w)/centro_w
+                    error_h = (centroide_h - centro_h)/centro_h
+                    print("Etiqueta: {} Error x: {}    Error y: {}".format(track.track_id,error_w,error_h))
+
+
+
+
         # calculate frames per second of running detections
         fps = 1.0 / (time.time() - start_time)
-        print("FPS: %.2f" % fps)
+        #print("FPS: %.2f" % fps)
         result = np.asarray(frame)
         result = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         
         if not FLAGS.dont_show:
             cv2.imshow("Output Video", result)
-        
+            # Selección de individuo
+            cv2.setMouseCallback("Output Video", get_mouse_pos)
+
         # if output flag is set, save video file
         if FLAGS.output:
             out.write(result)
@@ -238,3 +270,5 @@ if __name__ == '__main__':
         app.run(main)
     except SystemExit:
         pass
+
+
